@@ -1,0 +1,61 @@
+function [chargeStatus, batVolt, solarVolt, loadCurrent] = simulateSolarChargeController(solarVoltInput, batVoltInput,loadCurrentInput)
+    % Paramètres de configuration
+    BAT_MIN = 10.5;
+    BAT_MAX = 15.0;
+    BULK_CH_SP = 14.4;
+    FLOAT_CH_SP = 13.6;
+    LVD = 11.5;
+
+    % Convertir les entrées
+    solarVolt = solarVoltInput; % Tension du panneau solaire en volts
+    batVolt = batVoltInput; % Tension de la batterie en volts
+    loadCurrent = loadCurrentInput; % Courant de charge en ampères
+    % Détecter la tension du système
+    systemVolt = detectSystemVoltage(batVolt, BAT_MIN, BAT_MAX);
+
+    % Définir les points de consigne en fonction de la tension du système et de la température
+    [bulkChargeSP, floatChargeSP] = setChargeSetPoints(systemVolt, BULK_CH_SP, FLOAT_CH_SP, LVD, temperature);
+
+    % Cycle de charge
+    [chargeStatus] = chargeCycle(solarVolt, batVolt, bulkChargeSP, floatChargeSP);
+
+
+
+    % Fonctions auxiliaires (détails ci-dessous)
+end
+
+function systemVolt = detectSystemVoltage(batVolt, BAT_MIN, BAT_MAX)
+    if ((batVolt > BAT_MIN) && (batVolt < BAT_MAX))
+        systemVolt = 12;
+    else
+        systemVolt = 6; % Pour simplifier, nous considérons uniquement les systèmes de 12V et de 6V
+    end
+end
+
+function [chargeStatus, pwmDuty] = chargeCycle(solarVolt, batVolt, bulkChargeSP, floatChargeSP)
+    if solarVolt > batVolt && batVolt <= bulkChargeSP
+        if batVolt <= floatChargeSP
+            chargeStatus = 1; % En charge rapide
+            pwmDuty = 99;
+        elseif batVolt > floatChargeSP && batVolt <= bulkChargeSP
+            chargeStatus = 2; % En charge d'entretien
+            pwmDuty = calculateDutyCycle(batVolt, bulkChargeSP);
+        end
+    else
+        chargeStatus = 0; % Pas en charge
+        pwmDuty = 0;
+    end
+end
+
+function dutyCycle = calculateDutyCycle(batVolt, bulkChargeSP)
+    error = bulkChargeSP - batVolt;
+    Ep = error * 100; % Ep = error * Kp (Assumant Kp = 100)
+    
+    if Ep < 0
+        Ep = 0;
+    elseif Ep > 100
+        Ep = 100;
+    end
+    
+    dutyCycle = (Ep * 255) / 100;
+end
